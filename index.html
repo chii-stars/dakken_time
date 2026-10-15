@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+<!-- このファイルがHTML5の文書であることをブラウザに伝える宣言 -->
+<html lang="ja">
+  <!-- lang="ja" : ページの言語が日本語であることを示す（読み上げソフトや翻訳機能が参照する） -->
+  <head>
+    <!-- 文字コードをUTF-8に指定（日本語の文字化けを防ぐ） -->
+    <meta charset="UTF-8" />
+    <!-- スマホでも画面幅に合わせて表示されるようにする設定 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- ブラウザのタブに表示されるタイトル -->
+    <title>VRゲーム体験 待ち時間管理システム</title>
+
+    <!-- QRコードを作るための外部ライブラリ（QRCode.js）を読み込む -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <style>
+      /* ===========================================================
+         CSS（見た目の設定）
+         元のTailwind CSSやアイコンライブラリをやめて、
+         必要最低限のスタイルだけを自分で書いている
+         =========================================================== */
+
+      /* よく使う色を「変数」としてまとめて定義する。
+         色を変えたいときはここだけ書き換えればよい */
+      :root {
+        --bg: #f5f5f5;       /* ページ全体の背景色（薄いグレー） */
+        --card: #ffffff;     /* カード（白い箱）の背景色 */
+        --text: #222222;     /* 基本の文字色 */
+        --muted: #777777;    /* 補足説明など、控えめな文字の色 */
+        --line: #dddddd;     /* 枠線の色 */
+        --main: #2f5bb7;     /* メインの色（青）：ボタンや番号など */
+        --danger: #c62828;   /* 危険・呼び出しの色（赤） */
+        --ok: #2e7d32;       /* 完了・受付中の色（緑） */
+        --warn: #b26a00;     /* 注意の色（オレンジ） */
+      }
+
+      /* すべての要素で、幅の計算に枠線と余白を含める（レイアウト崩れ防止） */
+      * {
+        box-sizing: border-box;
+      }
+
+      /* ページ全体の基本設定 */
+      body {
+        margin: 0;                         /* ブラウザ標準の余白を消す */
+        font-family: system-ui, "Hiragino Sans", "Yu Gothic", sans-serif; /* 端末標準のフォントを使う */
+        background: var(--bg);             /* 背景色 */
+        color: var(--text);                /* 文字色 */
+        line-height: 1.6;                  /* 行の高さ（読みやすさのため） */
+        min-height: 100vh;                 /* 画面の高さいっぱいに広げる */
+        display: flex;                     /* フッターを一番下に置くための縦並び設定 */
+        flex-direction: column;
+      }
+
+      /* ヘッダー（画面上部の帯） */
+      header {
+        background: var(--card);
+        border-bottom: 1px solid var(--line);
+      }
+
+      /* ヘッダー・メイン部分の中身の幅をそろえる共通クラス */
+      .container {
+        max-width: 640px;   /* 横に広がりすぎないよう最大幅を決める */
+        margin: 0 auto;     /* 左右中央に配置 */
+        padding: 12px 16px; /* 内側の余白 */
+      }
+
+      /* ヘッダー内：タイトルとログアウトボタンを左右に並べる */
+      .header-inner {
+        display: flex;
+        justify-content: space-between; /* 左右の端に寄せる */
+        align-items: center;            /* 縦方向は中央ぞろえ */
+      }
+
+      /* ヘッダーのタイトル文字 */
+      header h1 {
+        font-size: 18px;
+        margin: 0;
+      }
+
+      /* ヘッダーのサブタイトル（小さい文字） */
+      .subtitle {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      /* メイン部分は残りの高さをすべて使う（フッターを下に押し出す） */
+      main {
+        flex: 1;
+        width: 100%;
+      }
+
+      /* 白い箱（カード）の共通デザイン */
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 16px;
+      }
+
+      /* 見出しの大きさと余白 */
+      h2 {
+        font-size: 18px;
+        margin: 0 0 12px;
+      }
+
+      /* 補足説明の文字 */
+      .note {
+        font-size: 13px;
+        color: var(--muted);
+        margin: 0 0 12px;
+      }
+
+      /* 2つの数字（待ち組数・待ち時間など）を横に並べる枠 */
+      .stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr; /* 同じ幅で2列 */
+        gap: 12px;
+        text-align: center;
+        margin-bottom: 16px;
+      }
+
+      /* 数字1つぶんの枠 */
+      .stat {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 10px;
+      }
+
+      /* 数字の上の小さなラベル */
+      .stat-label {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      /* 大きく表示する数字 */
+      .stat-value {
+        font-size: 26px;
+        font-weight: bold;
+      }
+
+      /* 文字入力欄 */
+      input[type="text"],
+      input[type="password"],
+      input[type="number"] {
+        width: 100%;
+        padding: 10px;
+        font-size: 16px; /* 16px未満だとiPhoneで自動ズームされるため */
+        border: 1px solid var(--line);
+        border-radius: 6px;
+      }
+
+      /* 入力欄の上のラベル */
+      label {
+        display: block;
+        font-size: 13px;
+        margin-bottom: 4px;
+      }
+
+      /* ボタンの基本デザイン（白地に枠線） */
+      button {
+        font: inherit;              /* ページと同じフォントを使う */
+        font-size: 14px;
+        padding: 8px 14px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--card);
+        color: var(--text);
+        cursor: pointer;            /* マウスを乗せると指マークになる */
+      }
+
+      /* キーボード操作時にどのボタンを選んでいるか分かるようにする */
+      button:focus-visible,
+      input:focus-visible {
+        outline: 2px solid var(--main);
+        outline-offset: 2px;
+      }
+
+      /* 押せない状態のボタンは薄く表示 */
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      /* 色付きボタン（メイン・赤・緑） */
+      .btn-main {
+        background: var(--main);
+        border-color: var(--main);
+        color: #fff;
+      }
+      .btn-danger {
+        background: var(--danger);
+        border-color: var(--danger);
+        color: #fff;
+      }
+      .btn-ok {
+        background: var(--ok);
+        border-color: var(--ok);
+        color: #fff;
+      }
+
+      /* 横幅いっぱいのボタン */
+      .btn-full {
+        width: 100%;
+        padding: 12px;
+        font-size: 16px;
+        margin-top: 12px;
+      }
+
+      /* 文字だけのボタン（リンク風） */
+      .btn-link {
+        border: none;
+        background: none;
+        color: var(--danger);
+        text-decoration: underline;
+      }
+
+      /* お知らせ枠（受付停止・呼び出しなど）の共通デザイン */
+      .notice {
+        padding: 12px;
+        border-radius: 6px;
+        margin-bottom: 16px;
+        font-weight: bold;
+        text-align: center;
+      }
+      .notice-warn {
+        background: #fff4e0;
+        color: var(--warn);
+      }
+      .notice-danger {
+        background: var(--danger);
+        color: #fff;
+      }
+
+      /* 体験完了などを知らせる、青系のお知らせ */
+      .notice-info {
+        background: #e8eef9;
+        color: var(--main);
+      }
+
+      /* 呼び出し中の整理券カード：赤い太枠で一目で分かるようにする */
+      .card.called {
+        border: 3px solid var(--danger);
+      }
+
+      /* 呼び出し中は整理券番号も赤くする */
+      .card.called .ticket-number {
+        color: var(--danger);
+      }
+
+      /* 整理券番号（大きな数字） */
+      .ticket-number {
+        font-size: 48px;
+        font-weight: bold;
+        color: var(--main);
+        text-align: center;
+        margin: 0;
+      }
+
+      /* 中央ぞろえ用の汎用クラス */
+      .center {
+        text-align: center;
+      }
+
+      /* 横並び（ボタンを並べる時など）用の汎用クラス */
+      .row {
+        display: flex;
+        flex-wrap: wrap;      /* 入りきらない時は折り返す */
+        gap: 8px;
+        align-items: center;
+      }
+
+      /* 主催者画面：待機者リストの1行 */
+      .queue-item {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 10px 12px;
+        margin-bottom: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+
+      /* 呼び出し中の行は左に赤い線を引いて目立たせる */
+      .queue-item.called {
+        border-left: 4px solid var(--danger);
+      }
+
+      /* 待機者リスト内の整理券番号 */
+      .queue-number {
+        font-size: 20px;
+        font-weight: bold;
+        margin-right: 8px;
+      }
+
+      /* フッター（画面最下部） */
+      footer {
+        text-align: center;
+        font-size: 12px;
+        color: var(--muted);
+        padding: 16px;
+      }
+
+      /* ポップアップ（モーダル）の背景：画面全体を半透明の黒で覆う */
+      .modal {
+        position: fixed;          /* スクロールしても画面に固定 */
+        inset: 0;                 /* 上下左右いっぱいに広げる */
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;      /* 中身を画面の中央に置く */
+        justify-content: center;
+        padding: 16px;
+        z-index: 100;             /* 他の要素より手前に表示 */
+      }
+
+      /* ポップアップの白い箱 */
+      .modal-box {
+        background: var(--card);
+        border-radius: 8px;
+        padding: 20px;
+        max-width: 360px;
+        width: 100%;
+        text-align: center;
+      }
+
+      /* QRコードを中央に置く */
+      #qrcode-share {
+        display: flex;
+        justify-content: center;
+        margin: 12px 0;
+      }
+
+      /* 参加者用URLの表示（長いURLも折り返す） */
+      #share-url-text {
+        font-size: 11px;
+        color: var(--muted);
+        word-break: break-all;
+      }
+
+      /* hiddenクラスが付いた要素は非表示にする。
+         JavaScriptでこのクラスを付け外しして画面を切り替える */
+      .hidden {
+        display: none !important;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- ===========================================================
+         ヘッダー：ページ上部のタイトル部分
+         =========================================================== -->
+    <header>
+      <div class="container header-inner">
+        <div>
+          <!-- アプリのタイトル -->
+          <h1>VRゲーム体験ブース</h1>
+          <!-- サブタイトル（参加者画面か主催者画面かで文字がJSにより変わる） -->
+          <span id="header-subtitle" class="subtitle">待ち時間確認システム</span>
+        </div>
+
+        <!-- 主催者がログインしている時だけ表示されるログアウトボタン -->
+        <div id="admin-header-badge" class="hidden">
+          <!-- クリックすると adminLogout() 関数が実行される -->
+          <button onclick="adminLogout()">ログアウト</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ===========================================================
+         メイン部分：3つの画面（参加者・ログイン・管理）を切り替えて表示
+         =========================================================== -->
+    <main class="container">
+      <!-- ---------------------------------------------------------
+           画面1：参加者用画面
+           URLの最後に ?mode=admin が付いていない時に表示される
+           --------------------------------------------------------- -->
+      <!-- 【修正】この端末でデータを保存できない時（プライベートブラウズ等）の警告 -->
+      <div id="storage-warning" class="notice notice-warn hidden">
+        この端末ではデータを保存できません。通常のブラウザ画面で開き直してください。
+      </div>
+
+      <section id="participant-view" class="hidden">
+        <!-- 【修正】体験完了・取り消しになったことを知らせるお知らせ -->
+        <div id="guest-finished-note" class="notice notice-info hidden"></div>
+
+        <!-- 主催者が受付を止めている時だけ表示されるお知らせ -->
+        <div id="reception-closed-banner" class="notice notice-warn hidden">
+          ただいま新規の予約受付を一時停止しています。
+        </div>
+
+        <!-- A. まだ予約していない人向け：整理券の発行フォーム -->
+        <div id="guest-form-card" class="card">
+          <h2>整理券を発行する</h2>
+          <p class="note">ニックネームを入力すると順番待ちに並べます。</p>
+
+          <!-- 現在の混雑状況（待ち組数と待ち時間） -->
+          <div class="stats">
+            <div class="stat">
+              <div class="stat-label">現在の待ち</div>
+              <!-- 数字部分だけをJSで書き換えるため、単位は外に出している -->
+              <div class="stat-value"><span id="guest-total-waiting">0</span> 組</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">およその待ち時間</div>
+              <div class="stat-value">約 <span id="guest-total-time">0</span> 分</div>
+            </div>
+          </div>
+
+          <!-- 送信（ボタン押下やEnterキー）時に handleBooking() が実行される -->
+          <form id="booking-form" onsubmit="handleBooking(event)">
+            <!-- for="nickname" で下の入力欄とラベルを結びつける -->
+            <label for="nickname">ニックネーム（必須・12文字まで）</label>
+            <!-- required：空欄では送信できない / maxlength：最大文字数 -->
+            <input type="text" id="nickname" required maxlength="12" placeholder="例：たろう" />
+            <!-- type="submit" のボタンを押すとフォームが送信される -->
+            <button type="submit" id="submit-booking-btn" class="btn-main btn-full">
+              整理券を発行する
+            </button>
+          </form>
+        </div>
+
+        <!-- B. 予約済みの人向け：自分の整理券カード -->
+        <div id="guest-ticket-card" class="card hidden">
+          <!-- 呼び出し中・もうすぐ などのお知らせ（状態に応じてJSで変化） -->
+          <div id="ticket-alert" class="notice hidden"></div>
+
+          <!-- 状態の文字（待機中／もうすぐ／呼び出し中）と予約者名 -->
+          <p class="note center">
+            <span id="ticket-status-text">待機中</span>
+            ・<span id="ticket-nickname"></span> 様
+          </p>
+
+          <!-- 整理券番号 -->
+          <p class="note center" style="margin-bottom: 0">あなたの整理券番号</p>
+          <p id="ticket-number" class="ticket-number">A-00</p>
+
+          <!-- 自分の前に何組いるか・あと何分か -->
+          <!-- 呼び出し中は不要なので、JSでこの枠ごと隠す -->
+          <div id="my-stats" class="stats" style="margin-top: 16px">
+            <div class="stat">
+              <div class="stat-label">あなたの前の待ち</div>
+              <div class="stat-value"><span id="my-ahead-count">0</span> 組</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">推定待ち時間</div>
+              <div class="stat-value">約 <span id="my-est-time">0</span> 分</div>
+            </div>
+          </div>
+
+          <!-- 予約キャンセルボタン：押すと確認のポップアップが出る -->
+          <div class="center">
+            <button class="btn-link" onclick="cancelMyBooking()">予約をキャンセルする</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------------
+           画面2：主催者ログイン画面
+           ?mode=admin が付いていて、まだログインしていない時に表示
+           --------------------------------------------------------- -->
+      <section id="admin-login-view" class="hidden">
+        <div class="card center">
+          <h2>主催者ログイン</h2>
+          <p class="note">管理用パスワードを入力してください。</p>
+
+          <!-- 送信時に handleAdminLogin() でパスワードを確認する -->
+          <form onsubmit="handleAdminLogin(event)">
+            <!-- type="password" で入力文字が●で隠れる -->
+            <input type="password" id="admin-password" placeholder="パスワード（初期：1234）" required />
+            <button type="submit" id="admin-login-btn" class="btn-main btn-full">ログイン</button>
+          </form>
+
+          <!-- パスワードが違う時だけ表示されるエラー文 -->
+          <p id="login-error-msg" class="hidden" style="color: var(--danger)">
+            パスワードが違います。
+          </p>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------------
+           画面3：主催者管理画面
+           ?mode=admin が付いていて、ログイン済みの時に表示
+           --------------------------------------------------------- -->
+      <section id="admin-dashboard-view" class="hidden">
+        <!-- 運営の設定をまとめた枠 -->
+        <div class="card">
+          <h2>運営コントロール</h2>
+
+          <!-- 1組あたりの体験時間（待ち時間の計算に使う） -->
+          <label for="time-per-group">1組あたりの体験時間（分）</label>
+          <!-- 値を変えると updateTimePerGroup() が実行される -->
+          <input
+            type="number"
+            id="time-per-group"
+            min="1"
+            max="60"
+            value="5"
+            onchange="updateTimePerGroup(this.value)"
+            style="max-width: 120px"
+          />
+
+          <!-- 新規受付のON/OFF -->
+          <div class="row" style="margin-top: 16px">
+            <span>新規受付：</span>
+            <!-- 「受付中」「停止中」の文字はJSで切り替える -->
+            <strong id="reception-status-text">受付中</strong>
+            <!-- 押すたびに toggleReception() で受付状態を反転 -->
+            <button id="toggle-reception-btn" onclick="toggleReception()">停止する</button>
+          </div>
+
+          <!-- その他の操作ボタン -->
+          <div class="row" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line)">
+            <!-- 参加者に読み取ってもらうQRコードを表示 -->
+            <button onclick="toggleShareQrModal()">参加者用QRを表示</button>
+            <!-- 管理パスワードを変更 -->
+            <button onclick="changeAdminPasswordPrompt()">パスワード変更</button>
+            <!-- すべての予約を消す（確認あり） -->
+            <button class="btn-danger" onclick="resetAllData()">全データリセット</button>
+          </div>
+        </div>
+
+        <!-- 待機中・呼び出し中の人の一覧 -->
+        <div class="card">
+          <div class="row" style="justify-content: space-between">
+            <h2 style="margin: 0">待機・呼び出し一覧</h2>
+            <!-- 待機中の組数（JSで更新） -->
+            <span id="admin-queue-count" class="note" style="margin: 0">待機中：0組</span>
+          </div>
+          <!-- この中に一覧の各行がJSで追加される -->
+          <div id="admin-queue-list" style="margin-top: 12px"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- フッター -->
+    <footer>文化祭 ゲーム体験 待ち時間管理システム</footer>
+
+    <!-- ===========================================================
+         ポップアップ（モーダル）
+         普段は hidden で隠れていて、必要な時だけ表示される
+         =========================================================== -->
+
+    <!-- 1. 参加者配布用QRコードのポップアップ（主催者用） -->
+    <div id="share-qr-modal" class="modal hidden">
+      <div class="modal-box">
+        <h2>参加者受付用QRコード</h2>
+        <p class="note">参加者にこのQRコードを読み取ってもらってください。</p>
+        <!-- ここにQRコードの画像がJSで描かれる -->
+        <div id="qrcode-share"></div>
+        <!-- QRコードの中身（URL）を文字でも表示 -->
+        <p id="share-url-text"></p>
+        <button class="btn-full" onclick="toggleShareQrModal()">閉じる</button>
+      </div>
+    </div>
+
+    <!-- 2. 汎用ポップアップ（ブラウザ標準の alert / confirm の代わり） -->
+    <div id="custom-modal" class="modal hidden">
+      <div class="modal-box">
+        <!-- タイトルとメッセージはJSで差し込む -->
+        <h2 id="modal-title"></h2>
+        <p id="modal-message"></p>
+        <!-- ボタンもJSで作って差し込む -->
+        <div id="modal-actions" class="row" style="justify-content: center"></div>
+      </div>
+    </div>
+
+    <!-- 3. 文字入力付きポップアップ（パスワード変更で使う） -->
+    <div id="input-modal" class="modal hidden">
+      <div class="modal-box">
+        <h2 id="input-modal-title"></h2>
+        <input type="password" id="input-modal-field" placeholder="新しいパスワード" />
+        <div id="input-modal-actions" class="row" style="justify-content: center; margin-top: 12px"></div>
+      </div>
+    </div>
+
+    <!-- ===========================================================
+         JavaScript（動きの部分）
+         =========================================================== -->
+    <script>
+      /* -----------------------------------------------------------
+         1. データの入れ物（状態管理）
+         ----------------------------------------------------------- */
+
+      // ブラウザ内にデータを保存するときの「名前（キー）」
+      const APP_STORAGE_KEY = "fest_queue_sys_v2";
+      // 自分の整理券IDを保存するときの名前（この端末専用）
+      const MY_TICKET_KEY = APP_STORAGE_KEY + "_my_ticket_id";
+      // 同じブラウザの別タブ同士で連絡を取り合うための「チャンネル名」
+      const BROADCAST_CHANNEL_NAME = "fest_queue_sync_channel";
+      // 画面を自動で最新にする間隔（ミリ秒）。3000 = 3秒
+      const REFRESH_INTERVAL = 3000;
+
+      // データの初期値を作る関数（リセット時にも同じ形を使うため関数にしている）
+      function createDefaultState() {
+        return {
+          timePerGroup: 5,        // 1組あたりの体験時間（分）
+          isReceptionOpen: true,  // 新規受付中なら true、停止中なら false
+          ticketCounter: 1,       // 次に発行する整理券の番号
+          queue: [],              // 予約の一覧。1件ごとに {id, number, nickname, status, createdAt}
+          adminPassword: "1234",  // 主催者用パスワード（初期値）
+        };
+      }
+
+      // アプリ全体で共有するデータ（保存される）
+      let state = createDefaultState();
+
+      // この端末・このタブだけで使うデータ
+      let localState = {
+        isAdminLoggedIn: false, // 主催者としてログインしているか
+        myTicketId: null,       // この端末で発行した自分の整理券のID
+        currentMode: "guest",   // "guest"（参加者）か "admin"（主催者）か
+      };
+
+      // 別タブとの連絡用チャンネル（あとで作る）
+      let broadcastChannel = null;
+
+      // ブラウザの保存機能（localStorage）が使えるかどうか
+      let storageAvailable = true;
+
+      /* -----------------------------------------------------------
+         2. 保存機能を安全に使うための関数
+         【修正】プライベートブラウズ等で保存が禁止されていると、
+         元のコードはエラーで止まってしまっていた。
+         try...catch でエラーを受け止めて、アプリが止まらないようにする
+         ----------------------------------------------------------- */
+
+      // 保存データを読み出す（失敗したら null を返す）
+      function storageGet(key) {
+        try {
+          return localStorage.getItem(key);
+        } catch (e) {
+          storageAvailable = false;
+          return null;
+        }
+      }
+
+      // データを保存する（失敗したら保存できないことを記録する）
+      function storageSet(key, value) {
+        try {
+          localStorage.setItem(key, value);
+        } catch (e) {
+          storageAvailable = false;
+        }
+      }
+
+      // 保存データを削除する
+      function storageRemove(key) {
+        try {
+          localStorage.removeItem(key);
+        } catch (e) {
+          storageAvailable = false;
+        }
+      }
+
+      /* -----------------------------------------------------------
+         3. 起動時の処理
+         ----------------------------------------------------------- */
+
+      // ページの読み込みが終わったら一度だけ実行される
+      window.onload = function () {
+        loadStateFromStorage(); // 保存済みのデータを読み込む
+        initBroadcastChannel(); // 別タブとの同期を準備する
+
+        // URLの「?」以降を読み取り、mode=admin なら主催者モードにする
+        const urlParams = new URLSearchParams(window.location.search);
+        localState.currentMode = urlParams.get("mode") === "admin" ? "admin" : "guest";
+
+        // 【修正】元のコードは10秒ごとに「描き直すだけ」で、データを読み直していなかった。
+        // そのため更新の連絡を取りこぼすと、古い画面のままになっていた。
+        // 定期的に「最新データを読み直してから」描き直すようにする
+        setInterval(refreshFromStorage, REFRESH_INTERVAL);
+
+        // 【修正】スマホでアプリを切り替えて戻ってきた時など、
+        // 画面が再び表示されたタイミングでも最新データを読み直す
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") refreshFromStorage();
+        });
+        // 「戻る」ボタンでページが復元された時も読み直す
+        window.addEventListener("pageshow", refreshFromStorage);
+
+        // 最初の画面表示
+        render();
+      };
+
+      // 最新データを読み直して画面を描き直す
+      function refreshFromStorage() {
+        loadStateFromStorage();
+        render();
+      }
+
+      // 別タブで操作があった時に、このタブの画面も更新する仕組みを作る
+      function initBroadcastChannel() {
+        // BroadcastChannel に対応しているブラウザの場合
+        if ("BroadcastChannel" in window) {
+          broadcastChannel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+          // 他のタブから「更新したよ」と連絡が来たら、データを読み直して再表示
+          broadcastChannel.onmessage = (event) => {
+            if (event.data && event.data.type === "STATE_UPDATED") {
+              refreshFromStorage();
+            }
+          };
+        }
+        // 予備の方法：保存データが他のタブで書き換えられた時にも再表示
+        window.addEventListener("storage", (e) => {
+          // e.key が null のときは「全部消された」という意味なので、その時も読み直す
+          if (e.key === null || e.key === APP_STORAGE_KEY || e.key === MY_TICKET_KEY) {
+            refreshFromStorage();
+          }
+        });
+      }
+
+      // ブラウザ（localStorage）に保存されたデータを読み込む
+      function loadStateFromStorage() {
+        const saved = storageGet(APP_STORAGE_KEY);
+        // 【修正】まず初期値に戻してから保存データを重ねる。
+        // こうしないと、他のタブでリセットされた時に古いデータが残ってしまう
+        state = createDefaultState();
+        if (saved) {
+          try {
+            // 文字列として保存されているので、JSONとして元のデータに戻す
+            const parsed = JSON.parse(saved);
+            // 初期値に保存データを上書きする（足りない項目は初期値のまま）
+            state = { ...state, ...parsed };
+            // 【修正】queue が配列でない壊れたデータなら空の一覧にする
+            if (!Array.isArray(state.queue)) state.queue = [];
+          } catch (e) {
+            // データが壊れていた場合はエラーを記録して初期値のまま使う
+            console.error("保存データの読み込みに失敗しました", e);
+          }
+        }
+        // この端末で発行した自分の整理券IDを読み込む
+        localState.myTicketId = storageGet(MY_TICKET_KEY);
+      }
+
+      // 【修正】データを変更するときは必ずこの関数を通す。
+      // 元のコードは「タブが持っている古いデータ」をそのまま丸ごと保存していたため、
+      // 他のタブで追加された予約を消してしまうことがあった（＝参加者の画面が戻る原因）。
+      // ここでは「最新を読み直す → 変更する → 保存する」の順番を必ず守る
+      function updateState(changeFunction) {
+        loadStateFromStorage();   // ① 保存されている最新データを読み直す
+        changeFunction(state);    // ② 最新データに対して変更を加える
+        storageSet(APP_STORAGE_KEY, JSON.stringify(state)); // ③ 保存する
+        notifyOtherTabs();        // ④ 他のタブに知らせる
+        render();                 // ⑤ このタブの画面を描き直す
+      }
+
+      // 【修正】自分の整理券IDは、参加者が予約・キャンセルした時だけ保存する。
+      // 元のコードは主催者の操作のたびにも書き込んでおり、
+      // 主催者タブの古い値（null）で参加者のIDを消してしまうことがあった
+      function setMyTicketId(id) {
+        localState.myTicketId = id;
+        if (id) storageSet(MY_TICKET_KEY, id);
+        else storageRemove(MY_TICKET_KEY);
+        notifyOtherTabs();
+      }
+
+      // 他のタブに「更新したよ」と連絡
+      function notifyOtherTabs() {
+        if (broadcastChannel) {
+          broadcastChannel.postMessage({ type: "STATE_UPDATED" });
+        }
+      }
+
+      /* -----------------------------------------------------------
+         4. 主催者のログイン関係
+         ----------------------------------------------------------- */
+
+      // ログインフォームが送信された時の処理
+      function handleAdminLogin(e) {
+        e.preventDefault(); // フォーム送信によるページ再読み込みを止める
+        loadStateFromStorage(); // 【修正】別タブで変更されたパスワードにも対応するため読み直す
+        const passInput = document.getElementById("admin-password");
+        const errorMsg = document.getElementById("login-error-msg");
+
+        // 入力されたパスワードが正しいか確認
+        if (passInput.value === state.adminPassword) {
+          localState.isAdminLoggedIn = true; // ログイン状態にする
+          errorMsg.classList.add("hidden");  // エラー表示を消す
+          passInput.value = "";              // 入力欄を空にする
+          render();                          // 管理画面を表示
+        } else {
+          errorMsg.classList.remove("hidden"); // 間違っていればエラーを表示
+        }
+      }
+
+      // ログアウト：ログイン状態を解除して画面を描き直す
+      function adminLogout() {
+        localState.isAdminLoggedIn = false;
+        render();
+      }
+
+      // パスワード変更：入力ポップアップを出し、入力内容をチェックして保存
+      function changeAdminPasswordPrompt() {
+        showInputModal("管理者パスワードの変更", (newPass) => {
+          // 前後の空白を除いて4文字以上なら保存
+          if (newPass && newPass.trim().length >= 4) {
+            updateState((s) => {
+              s.adminPassword = newPass.trim();
+            });
+            showModal("変更完了", "新しいパスワードを保存しました。", [{ text: "OK", primary: true }]);
+          } else {
+            showModal("エラー", "パスワードは4文字以上で入力してください。", [{ text: "OK", primary: true }]);
+          }
+        });
+      }
+
+      /* -----------------------------------------------------------
+         5. 参加者の操作
+         ----------------------------------------------------------- */
+
+      // 整理券発行フォームが送信された時の処理
+      function handleBooking(event) {
+        event.preventDefault(); // ページの再読み込みを止める
+        loadStateFromStorage(); // 【修正】受付状態などを最新にしてから判断する
+
+        // 受付停止中なら発行しない
+        if (!state.isReceptionOpen) {
+          showModal("受付停止中", "現在、新規の整理券発行を停止しています。", [{ text: "OK", primary: true }]);
+          render();
+          return;
+        }
+
+        // 【修正】すでに有効な整理券を持っている場合は二重に発行しない
+        // （別タブで先に予約していた場合など）
+        if (findActiveMyTicket()) {
+          render();
+          return;
+        }
+
+        // 入力されたニックネームを取り出す（前後の空白は削除）
+        const nicknameInput = document.getElementById("nickname");
+        const nickname = nicknameInput.value.trim();
+        if (!nickname) return; // 空（スペースだけ含む）なら何もしない
+
+        // 他と重ならないID（現在時刻＋ランダムな文字）
+        const newId = "ticket_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6);
+
+        // 最新データに整理券を追加して保存する
+        updateState((s) => {
+          s.queue.push({
+            id: newId,
+            // 整理券番号を作る（例：1 → "A-01"）。padStartで2桁にそろえる
+            number: `A-${String(s.ticketCounter).padStart(2, "0")}`,
+            nickname: nickname,                  // ニックネーム
+            status: "waiting",                   // 状態：waiting（待機中）
+            createdAt: new Date().toISOString(), // 受付した時刻
+          });
+          s.ticketCounter += 1; // 次の番号へ進める
+        });
+
+        setMyTicketId(newId);   // 自分の整理券として覚える
+        nicknameInput.value = ""; // 入力欄を空にする
+        render();
+      }
+
+      // 自分の予約をキャンセルする（確認ポップアップ付き）
+      function cancelMyBooking() {
+        showModal("予約のキャンセル", "本当に予約をキャンセルしますか？", [
+          { text: "戻る" },
+          {
+            text: "キャンセルする",
+            danger: true,
+            // 「キャンセルする」が押された時だけ実行される
+            onClick: () => {
+              const myId = localState.myTicketId;
+              updateState((s) => {
+                // 自分の整理券を探して、待機中か呼び出し中なら取り消しにする
+                const ticket = s.queue.find((t) => t.id === myId);
+                if (ticket && isActive(ticket)) ticket.status = "cancelled";
+              });
+              setMyTicketId(null); // 自分の整理券の記憶を消す
+              render();
+            },
+          },
+        ]);
+      }
+
+      /* -----------------------------------------------------------
+         6. 主催者の操作
+         ----------------------------------------------------------- */
+
+      // 1組あたりの体験時間を変更する
+      function updateTimePerGroup(val) {
+        const minutes = parseInt(val, 10); // 入力された文字を整数に変換
+        // 【修正】空欄・0以下・61以上などのおかしな値は保存せず、元の値に戻す
+        if (Number.isNaN(minutes) || minutes < 1 || minutes > 60) {
+          // 入力欄を保存済みの値に直接戻す
+          // （戻さないと、ポップアップのボタンを押した時に再び変更扱いになりエラーが繰り返される）
+          document.getElementById("time-per-group").value = state.timePerGroup;
+          showModal("入力エラー", "体験時間は1〜60分の数字で入力してください。", [{ text: "OK", primary: true }]);
+          return;
+        }
+        updateState((s) => {
+          s.timePerGroup = minutes;
+        });
+      }
+
+      // 新規受付のON/OFFを切り替える（true⇔false を反転）
+      function toggleReception() {
+        updateState((s) => {
+          s.isReceptionOpen = !s.isReceptionOpen;
+        });
+      }
+
+      // 整理券の状態を変える（called=呼び出し / completed=完了 / cancelled=取り消し）
+      function updateTicketStatus(ticketId, newStatus) {
+        updateState((s) => {
+          const ticket = s.queue.find((t) => t.id === ticketId);
+          // 【修正】すでに参加者がキャンセルした整理券を呼び出すと、
+          // キャンセルが取り消されて復活してしまっていた。
+          // 待機中・呼び出し中の整理券だけを変更できるようにする
+          if (ticket && isActive(ticket)) {
+            ticket.status = newStatus;
+            // 呼び出した時刻を記録（参加者画面に表示する）
+            if (newStatus === "called") ticket.calledAt = new Date().toISOString();
+          }
+        });
+      }
+
+      // すべての予約と番号を初期化する（確認ポップアップ付き）
+      function resetAllData() {
+        showModal("全データのリセット", "すべての予約データと番号を初期化します。よろしいですか？", [
+          { text: "いいえ" },
+          {
+            text: "リセットする",
+            danger: true,
+            onClick: () => {
+              updateState((s) => {
+                s.queue = [];        // 予約一覧を空にする
+                s.ticketCounter = 1; // 番号を1に戻す
+              });
+            },
+          },
+        ]);
+      }
+
+      // 参加者用QRコードのポップアップを開く／閉じる
+      function toggleShareQrModal() {
+        const modal = document.getElementById("share-qr-modal");
+
+        // 今隠れているなら、QRコードを作ってから表示する
+        if (modal.classList.contains("hidden")) {
+          // 参加者用のURL（?mode=admin を付けないURL）を作る
+          const participantUrl = window.location.origin + window.location.pathname;
+          document.getElementById("share-url-text").innerText = participantUrl;
+
+          // 前に作ったQRコードを消してから新しく作る
+          const qrContainer = document.getElementById("qrcode-share");
+          qrContainer.innerHTML = "";
+          // 【修正】QRコードのライブラリが読み込めなかった時（オフライン等）にエラーで止まらないようにする
+          if (typeof QRCode === "undefined") {
+            qrContainer.innerText = "QRコードを作成できませんでした。下のURLを共有してください。";
+          } else {
+            new QRCode(qrContainer, {
+              text: participantUrl,  // QRコードに入れる内容
+              width: 180,            // 横幅（ピクセル）
+              height: 180,           // 高さ（ピクセル）
+              colorDark: "#000000",  // 黒い部分の色
+              colorLight: "#ffffff", // 白い部分の色
+              correctLevel: QRCode.CorrectLevel.M, // 汚れなどへの強さ（中程度）
+            });
+          }
+
+          modal.classList.remove("hidden");
+        } else {
+          // 表示中なら隠す
+          modal.classList.add("hidden");
+        }
+      }
+
+      /* -----------------------------------------------------------
+         7. 判定用の小さな関数
+         ----------------------------------------------------------- */
+
+      // 整理券がまだ有効（待機中か呼び出し中）かどうか
+      function isActive(ticket) {
+        return ticket.status === "waiting" || ticket.status === "called";
+      }
+
+      // この端末の有効な整理券を探す（なければ undefined）
+      function findActiveMyTicket() {
+        if (!localState.myTicketId) return undefined;
+        const ticket = state.queue.find((t) => t.id === localState.myTicketId);
+        return ticket && isActive(ticket) ? ticket : undefined;
+      }
+
+      // ISO形式の日時を「時:分」の文字にする
+      function formatTime(iso) {
+        return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      }
+
+      /* -----------------------------------------------------------
+         8. 画面を描く処理
+         ----------------------------------------------------------- */
+
+      // 今の状態に合わせて、どの画面を見せるか決める
+      function render() {
+        const participantView = document.getElementById("participant-view");
+        const adminLoginView = document.getElementById("admin-login-view");
+        const adminDashboardView = document.getElementById("admin-dashboard-view");
+        const adminHeaderBadge = document.getElementById("admin-header-badge");
+        const headerSubtitle = document.getElementById("header-subtitle");
+
+        // 保存機能が使えない時は警告を出す
+        document.getElementById("storage-warning").classList.toggle("hidden", storageAvailable);
+
+        if (localState.currentMode === "admin") {
+          // 主催者モードの場合
+          headerSubtitle.innerText = "主催者管理モード";
+          participantView.classList.add("hidden");
+
+          if (!localState.isAdminLoggedIn) {
+            // 未ログイン → ログイン画面だけ表示
+            adminLoginView.classList.remove("hidden");
+            adminDashboardView.classList.add("hidden");
+            adminHeaderBadge.classList.add("hidden");
+          } else {
+            // ログイン済み → 管理画面とログアウトボタンを表示
+            adminLoginView.classList.add("hidden");
+            adminDashboardView.classList.remove("hidden");
+            adminHeaderBadge.classList.remove("hidden");
+            renderAdminDashboard();
+          }
+        } else {
+          // 参加者モードの場合：主催者用の要素はすべて隠す
+          headerSubtitle.innerText = "待ち時間確認システム";
+          adminLoginView.classList.add("hidden");
+          adminDashboardView.classList.add("hidden");
+          adminHeaderBadge.classList.add("hidden");
+          participantView.classList.remove("hidden");
+          renderParticipantView();
+        }
+      }
+
+      // 参加者画面の中身を描く
+      function renderParticipantView() {
+        // 待機中（waiting）の予約だけを取り出す
+        const waitingQueue = state.queue.filter((t) => t.status === "waiting");
+        const totalWaiting = waitingQueue.length;                // 待ち組数
+        const totalEstTime = totalWaiting * state.timePerGroup;  // 全体の待ち時間
+
+        // 受付停止中ならお知らせを出し、発行ボタンを押せなくする
+        document.getElementById("reception-closed-banner").classList.toggle("hidden", state.isReceptionOpen);
+        document.getElementById("submit-booking-btn").disabled = !state.isReceptionOpen;
+
+        // 混雑状況の数字を更新
+        document.getElementById("guest-total-waiting").innerText = totalWaiting;
+        document.getElementById("guest-total-time").innerText = totalEstTime;
+
+        const formCard = document.getElementById("guest-form-card");
+        const ticketCard = document.getElementById("guest-ticket-card");
+        const finishedNote = document.getElementById("guest-finished-note");
+
+        // 自分の整理券（IDが記録されていれば、状態を問わず探す）
+        const myTicket = localState.myTicketId
+          ? state.queue.find((t) => t.id === localState.myTicketId)
+          : undefined;
+
+        // 【修正】体験完了・主催者による取り消しの時は、何も言わずにフォームへ戻るのではなく
+        // 何があったかをお知らせとして表示する
+        if (myTicket && myTicket.status === "completed") {
+          finishedNote.innerText = `整理券 ${myTicket.number} の体験は完了しました。ご参加ありがとうございました。`;
+          finishedNote.classList.remove("hidden");
+        } else if (myTicket && myTicket.status === "cancelled") {
+          finishedNote.innerText = `整理券 ${myTicket.number} は取り消されました。`;
+          finishedNote.classList.remove("hidden");
+        } else {
+          finishedNote.classList.add("hidden");
+        }
+
+        // 有効な整理券がなければ発行フォームを表示
+        if (!myTicket || !isActive(myTicket)) {
+          formCard.classList.remove("hidden");
+          ticketCard.classList.add("hidden");
+          return; // ここで終了
+        }
+
+        // 整理券があれば整理券カードを表示
+        formCard.classList.add("hidden");
+        ticketCard.classList.remove("hidden");
+
+        // 番号とニックネームを表示（innerTextなので記号もそのまま安全に表示される）
+        document.getElementById("ticket-number").innerText = myTicket.number;
+        document.getElementById("ticket-nickname").innerText = myTicket.nickname;
+
+        // 待機列の中で自分が何番目か調べる（0なら先頭＝前に誰もいない）
+        const index = waitingQueue.findIndex((t) => t.id === myTicket.id);
+        const aheadCount = index >= 0 ? index : 0;
+        document.getElementById("my-ahead-count").innerText = aheadCount;
+        document.getElementById("my-est-time").innerText = aheadCount * state.timePerGroup;
+
+        // 状態に合わせてお知らせと状態の文字を切り替える
+        const alertBox = document.getElementById("ticket-alert");
+        const statusText = document.getElementById("ticket-status-text");
+        const statsBox = document.getElementById("my-stats");
+
+        if (myTicket.status === "called") {
+          // 呼び出し中：カード全体を呼び出し表示にし、待ち人数の表示は隠す
+          ticketCard.classList.add("called");
+          statsBox.classList.add("hidden");
+          statusText.innerText = "呼び出し中";
+          alertBox.className = "notice notice-danger";
+          alertBox.innerText =
+            "お呼び出し中です。ブース受付までお越しください。" +
+            (myTicket.calledAt ? `（${formatTime(myTicket.calledAt)} 呼び出し）` : "");
+        } else {
+          ticketCard.classList.remove("called");
+          statsBox.classList.remove("hidden");
+          if (aheadCount === 0) {
+            // 次の順番：オレンジのお知らせを表示
+            statusText.innerText = "もうすぐ";
+            alertBox.className = "notice notice-warn";
+            alertBox.innerText = "次があなたの番です。準備をしてお待ちください。";
+          } else {
+            // まだ待機中：お知らせは隠す
+            statusText.innerText = "待機中";
+            alertBox.className = "notice hidden";
+          }
+        }
+      }
+
+      // 主催者画面の中身を描く
+      function renderAdminDashboard() {
+        // 体験時間の入力欄に現在の値を入れる
+        // 【修正】入力中に自動更新で値が書き戻されないよう、入力欄を操作中の時は触らない
+        const timeInput = document.getElementById("time-per-group");
+        if (document.activeElement !== timeInput) timeInput.value = state.timePerGroup;
+
+        // 受付状態の文字とボタンの表示を切り替える
+        const recStatusText = document.getElementById("reception-status-text");
+        const recToggleBtn = document.getElementById("toggle-reception-btn");
+        if (state.isReceptionOpen) {
+          recStatusText.innerText = "受付中";
+          recStatusText.style.color = "var(--ok)";
+          recToggleBtn.innerText = "受付を停止";
+        } else {
+          recStatusText.innerText = "停止中";
+          recStatusText.style.color = "var(--danger)";
+          recToggleBtn.innerText = "受付を再開";
+        }
+
+        // 待機中または呼び出し中の予約だけを取り出す
+        const activeTickets = state.queue.filter(isActive);
+        document.getElementById("admin-queue-count").innerText = `待機中：${activeTickets.length}組`;
+
+        // 一覧を一度空にしてから作り直す
+        const listContainer = document.getElementById("admin-queue-list");
+        listContainer.innerHTML = "";
+
+        // 誰もいなければメッセージを出して終了
+        if (activeTickets.length === 0) {
+          listContainer.innerHTML = `<p class="note center">現在待機中のグループはありません。</p>`;
+          return;
+        }
+
+        // 1件ずつ一覧の行を作る（idx は 0 から始まる順番）
+        activeTickets.forEach((ticket, idx) => {
+          const isCalled = ticket.status === "called";
+
+          // 行の入れ物を作る。呼び出し中なら "called" クラスを付けて目立たせる
+          const item = document.createElement("div");
+          item.className = "queue-item" + (isCalled ? " called" : "");
+
+          // 行の中身（HTML）を作る。
+          // ニックネームは escapeHtml() で記号を無害化してから入れる（不正なタグ埋め込み対策）
+          item.innerHTML = `
+            <div>
+              <span class="queue-number">${ticket.number}</span>
+              <span>${escapeHtml(ticket.nickname)} 様</span>
+              <div class="note" style="margin: 0">
+                ${idx + 1}番目・受付 ${formatTime(ticket.createdAt)}${
+                  isCalled && ticket.calledAt ? `・${formatTime(ticket.calledAt)} 呼び出し中` : ""
+                }
+              </div>
+            </div>
+            <div class="row">
+              <button class="btn-main" data-action="called">${isCalled ? "再呼び出し" : "呼び出す"}</button>
+              <button class="btn-ok" data-action="completed">体験完了</button>
+              <button data-action="cancelled">削除</button>
+            </div>
+          `;
+
+          // 【修正】onclick属性に文字を埋め込む方式をやめ、ボタンに直接処理を登録する
+          // （IDに記号が入っても壊れない、より安全な書き方）
+          item.querySelectorAll("button[data-action]").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const action = btn.dataset.action;
+              if (action === "cancelled") {
+                // 【修正】削除は取り消せない操作なので確認を入れる
+                showModal("整理券の削除", `${ticket.number} を一覧から削除しますか？`, [
+                  { text: "いいえ" },
+                  { text: "削除する", danger: true, onClick: () => updateTicketStatus(ticket.id, "cancelled") },
+                ]);
+              } else {
+                updateTicketStatus(ticket.id, action);
+              }
+            });
+          });
+
+          // 作った行を一覧に追加
+          listContainer.appendChild(item);
+        });
+      }
+
+      /* -----------------------------------------------------------
+         9. ポップアップなどの共通部品
+         ----------------------------------------------------------- */
+
+      // メッセージ付きポップアップを表示する
+      // buttons には {text: 文字, primary/danger: 色, onClick: 押した時の処理} を並べて渡す
+      function showModal(title, message, buttons = []) {
+        const modal = document.getElementById("custom-modal");
+        document.getElementById("modal-title").innerText = title;
+        document.getElementById("modal-message").innerText = message;
+
+        // 前回のボタンを消す
+        const actionsContainer = document.getElementById("modal-actions");
+        actionsContainer.innerHTML = "";
+
+        // 渡された設定どおりにボタンを1つずつ作る
+        buttons.forEach((btnConfig) => {
+          const btn = document.createElement("button");
+          btn.innerText = btnConfig.text;
+          // 設定に応じてボタンの色を決める
+          if (btnConfig.danger) btn.className = "btn-danger";
+          else if (btnConfig.primary) btn.className = "btn-main";
+
+          // ボタンが押されたらポップアップを閉じ、処理があれば実行
+          btn.onclick = () => {
+            modal.classList.add("hidden");
+            if (btnConfig.onClick) btnConfig.onClick();
+          };
+          actionsContainer.appendChild(btn);
+        });
+
+        modal.classList.remove("hidden"); // ポップアップを表示
+      }
+
+      // 文字入力付きポップアップを表示する
+      // 「保存」が押されたら、入力された文字を callback 関数に渡す
+      function showInputModal(title, callback) {
+        const modal = document.getElementById("input-modal");
+        const field = document.getElementById("input-modal-field");
+        document.getElementById("input-modal-title").innerText = title;
+        field.value = ""; // 入力欄を空にする
+
+        const actionsContainer = document.getElementById("input-modal-actions");
+        actionsContainer.innerHTML = "";
+
+        // 保存する処理（ボタンとEnterキーの両方で使う）
+        const submit = () => {
+          modal.classList.add("hidden");
+          field.onkeydown = null;
+          callback(field.value);
+        };
+
+        // 「キャンセル」ボタン：閉じるだけ
+        const cancelBtn = document.createElement("button");
+        cancelBtn.innerText = "キャンセル";
+        cancelBtn.onclick = () => {
+          modal.classList.add("hidden");
+          field.onkeydown = null;
+        };
+
+        // 「保存」ボタン
+        const saveBtn = document.createElement("button");
+        saveBtn.innerText = "保存";
+        saveBtn.className = "btn-main";
+        saveBtn.onclick = submit;
+
+        // 【修正】入力欄でEnterキーを押しても保存できるようにする
+        field.onkeydown = (e) => {
+          if (e.key === "Enter") submit();
+        };
+
+        actionsContainer.appendChild(cancelBtn);
+        actionsContainer.appendChild(saveBtn);
+        modal.classList.remove("hidden");
+        field.focus(); // すぐ入力できるようにカーソルを置く
+      }
+
+      // HTMLで特別な意味を持つ記号（< > & " '）を安全な文字に置き換える
+      // 例：ニックネームに "<script>" と入力されてもプログラムとして動かないようにする
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+    </script>
+  </body>
+</html>
